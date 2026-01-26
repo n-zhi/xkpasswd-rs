@@ -282,7 +282,7 @@ impl Xkpasswd {
     }
 }
 
-fn load_dict(dict_bytes: &[u8]) -> Dict {
+fn load_dict(dict_bytes: &[u8]) -> Dict<'_> {
     let dict_str = from_utf8(dict_bytes).unwrap_or("").trim();
     let mut dict: Dict = HashMap::new();
 
@@ -292,7 +292,13 @@ fn load_dict(dict_bytes: &[u8]) -> Dict {
         let mut comps = line.trim().split(':');
 
         if let Some(len_str) = comps.next() {
-            let len = len_str.parse::<u8>().unwrap();
+            let len = match len_str.parse::<u8>() {
+                Ok(l) => l,
+                Err(_) => {
+                    log::warn!("skipping invalid word length in dictionary: {}", len_str);
+                    return;
+                }
+            };
             let words_csv = comps.next().unwrap_or("");
             let words: Vec<&str> = words_csv.split(',').collect();
             dict.insert(len, words);

@@ -18,10 +18,7 @@ pub trait ConfigParser {
 
 impl ConfigParser for Cli {
     fn parse_config_file(&mut self) -> Result<(), ConfigParseError> {
-        let config = match read_config_file(&self.config_file) {
-            Err(err) => return Err(err),
-            Ok(config) => config,
-        };
+        let config = read_config_file(&self.config_file)?;
 
         parse_number_config(
             self.words_count.is_some(),
@@ -111,10 +108,7 @@ fn lookup_default_config_path() -> Option<String> {
         path.push(CONFIG_FILE_NAME);
 
         if path.exists() {
-            return match path.into_os_string().into_string() {
-                Ok(config_path) => Some(config_path),
-                Err(_) => None,
-            };
+            return path.into_os_string().into_string().ok();
         }
     }
 
@@ -123,7 +117,7 @@ fn lookup_default_config_path() -> Option<String> {
 
 fn read_config_file(config_file: &Option<String>) -> Result<toml::Value, ConfigParseError> {
     let file_data = match config_file {
-        Some(config_file) => match fs::read(config_file) {
+        Some(config_file) => match fs::read_to_string(config_file) {
             Ok(data) => {
                 log::debug!("found config file at custom path {}", config_file);
                 Ok(data)
@@ -135,7 +129,7 @@ fn read_config_file(config_file: &Option<String>) -> Result<toml::Value, ConfigP
                 log::debug!("config file at default path not found, ignoring");
                 Err(ConfigParseError::Ignore)
             }
-            Some(config_path) => match fs::read(&config_path) {
+            Some(config_path) => match fs::read_to_string(&config_path) {
                 Ok(data) => {
                     log::debug!("found config file at default path {}", config_path);
                     Ok(data)
@@ -147,7 +141,7 @@ fn read_config_file(config_file: &Option<String>) -> Result<toml::Value, ConfigP
 
     match file_data {
         Err(err) => Err(err),
-        Ok(data) => match toml::from_slice::<toml::Value>(&data) {
+        Ok(data) => match toml::from_str::<toml::Value>(&data) {
             Err(parse_err) => Err(ConfigParseError::InvalidFile(parse_err.to_string())),
             Ok(parsed_data) => Ok(parsed_data),
         },
@@ -311,6 +305,8 @@ impl Getter for toml::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_parse_preset_config() {
@@ -459,5 +455,255 @@ mod tests {
         parse_number_config(false, &config, "words_count", |_| {
             panic!("shouldn't be invoked")
         });
+    }
+
+    #[test]
+    fn test_parse_config_file_with_temp_file() {
+        // Create a temp config file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(
+            temp_file,
+            r#"
+words_count = 5
+word_min = 4
+word_max = 8
+separators = ".-_"
+digits_before = 2
+digits_after = 3
+symbols = "!@#$"
+symbols_before = 1
+symbols_after = 2
+preset = "web32"
+lang = "de"
+transforms = ["lowercase", "uppercase"]
+"#
+        )
+        .unwrap();
+
+        let mut cli = Cli {
+            config_file: Some(temp_file.path().to_str().unwrap().to_string()),
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        assert!(result.is_ok());
+
+        // Verify values were parsed from config
+        assert_eq!(Some(5), cli.words_count);
+        assert_eq!(Some(4), cli.word_length_min);
+        assert_eq!(Some(8), cli.word_length_max);
+        assert_eq!(Some(".-_".to_string()), cli.separators);
+        assert_eq!(Some(2), cli.padding_digits_before);
+        assert_eq!(Some(3), cli.padding_digits_after);
+        assert_eq!(Some("!@#$".to_string()), cli.padding_symbols);
+        assert_eq!(Some(1), cli.padding_symbols_before);
+        assert_eq!(Some(2), cli.padding_symbols_after);
+        assert!(matches!(cli.preset, Some(Preset::Web32)));
+        assert!(matches!(cli.language, Some(Language::German)));
+        assert_eq!(
+            Some(vec![WordTransform::Lowercase, WordTransform::Uppercase]),
+            cli.word_transforms
+        );
+    }
+
+    #[test]
+    fn test_parse_config_file_cli_overrides_config() {
+        // Create a temp config file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, r#"words_count = 5"#).unwrap();
+
+        // CLI already has words_count set - should not be overridden
+        let mut cli = Cli {
+            config_file: Some(temp_file.path().to_str().unwrap().to_string()),
+            words_count: Some(10), // CLI value should take precedence
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        assert!(result.is_ok());
+
+        // CLI value should be preserved (not overridden by config)
+        assert_eq!(Some(10), cli.words_count);
+    }
+
+    #[test]
+    fn test_parse_config_file_invalid_file() {
+        let mut cli = Cli {
+            config_file: Some("/nonexistent/path/to/config.toml".to_string()),
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        assert!(matches!(result, Err(ConfigParseError::InvalidFile(_))));
+    }
+
+    #[test]
+    fn test_parse_config_file_invalid_toml() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "invalid toml {{ content").unwrap();
+
+        let mut cli = Cli {
+            config_file: Some(temp_file.path().to_str().unwrap().to_string()),
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        assert!(matches!(result, Err(ConfigParseError::InvalidFile(_))));
+    }
+
+    #[test]
+    fn test_parse_config_file_no_config() {
+        // No config file specified - behavior depends on whether user has a default config
+        // This test verifies that when no explicit config is given, we either:
+        // - Return Ignore if no default config exists
+        // - Return Ok if a default config exists and is valid
+        let mut cli = Cli {
+            config_file: None,
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        // Either no config found (Ignore) or config found and parsed (Ok)
+        // We don't fail on InvalidFile/InvalidConfig here
+        assert!(matches!(result, Err(ConfigParseError::Ignore) | Ok(())));
+    }
+
+    #[test]
+    fn test_parse_config_file_type_mismatch() {
+        // Test that wrong types in config are handled gracefully
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(
+            temp_file,
+            r#"
+words_count = "five"
+separators = 123
+"#
+        )
+        .unwrap();
+
+        let mut cli = Cli {
+            config_file: Some(temp_file.path().to_str().unwrap().to_string()),
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        // Should succeed - type mismatches are silently ignored (use defaults)
+        let result = cli.parse_config_file();
+        assert!(result.is_ok());
+
+        // Values should remain None since types didn't match
+        assert_eq!(None, cli.words_count);
+        assert_eq!(None, cli.separators);
+    }
+
+    #[test]
+    fn test_parse_config_file_with_padding_strategy() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, r#"padding = "adaptive""#).unwrap();
+
+        let mut cli = Cli {
+            config_file: Some(temp_file.path().to_str().unwrap().to_string()),
+            words_count: None,
+            word_length_min: None,
+            word_length_max: None,
+            word_transforms: None,
+            separators: None,
+            padding_digits_before: None,
+            padding_digits_after: None,
+            padding_symbols: None,
+            padding_symbols_before: None,
+            padding_symbols_after: None,
+            padding: None,
+            adaptive_length: None,
+            preset: None,
+            verbosity: 0,
+            language: None,
+        };
+
+        let result = cli.parse_config_file();
+        assert!(result.is_ok());
+        assert!(matches!(cli.padding, Some(CliPadding::Adaptive)));
     }
 }
