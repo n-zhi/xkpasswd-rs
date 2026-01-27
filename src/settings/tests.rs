@@ -699,6 +699,53 @@ fn test_padding_symbol_entropy_edge_cases() {
     );
 }
 
+/// Tests for blind_pool_size calculation edge cases.
+/// Verifies that +32 is added only when separators OR padding_symbols are non-empty.
+#[test]
+fn test_blind_pool_edge_cases() {
+    let pool_size = 1000;
+
+    // Base: no separators, no symbols, no digits → blind_pool = 52 (mixed case)
+    let no_extras = Settings::default()
+        .with_separators("")
+        .with_padding_symbols("")
+        .with_padding_digits(Some(0), Some(0))
+        .with_padding_symbol_lengths(Some(0), Some(0));
+    let blind_no_extras = no_extras.calc_entropy(pool_size).blind_min;
+
+    // With separators only → blind_pool = 52 + 32 = 84
+    let with_separators = no_extras.with_separators("-");
+    let blind_with_sep = with_separators.calc_entropy(pool_size).blind_min;
+    assert!(
+        blind_with_sep > blind_no_extras,
+        "Non-empty separators should increase blind_pool by +32"
+    );
+
+    // With padding_symbols only → blind_pool = 52 + 32 = 84
+    let with_symbols = no_extras.with_padding_symbols("!");
+    let blind_with_sym = with_symbols.calc_entropy(pool_size).blind_min;
+    assert!(
+        blind_with_sym > blind_no_extras,
+        "Non-empty padding_symbols should increase blind_pool by +32"
+    );
+
+    // Both empty → no +32
+    let both_empty = no_extras.with_separators("").with_padding_symbols("");
+    let blind_both_empty = both_empty.calc_entropy(pool_size).blind_min;
+    assert_eq!(
+        blind_no_extras, blind_both_empty,
+        "Empty separators AND empty symbols should not add +32"
+    );
+
+    // With digits → blind_pool += 10
+    let with_digits = no_extras.with_padding_digits(Some(2), Some(0));
+    let blind_with_digits = with_digits.calc_entropy(pool_size).blind_min;
+    assert!(
+        blind_with_digits > blind_no_extras,
+        "Non-zero padding_digits should increase blind_pool by +10"
+    );
+}
+
 #[test]
 fn test_build_words_list() {
     let settings = Settings::default().with_words_count(3).unwrap();

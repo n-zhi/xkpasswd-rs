@@ -450,10 +450,8 @@ impl Randomizer for Settings {
         let mut blind_pool_size = if single_word_transform { 26 } else { 52 };
 
         if self.padding_digits != (0, 0) {
-            blind_pool_size += 10
-        } else {
-            blind_pool_size += 0
-        };
+            blind_pool_size += 10;
+        }
 
         if !self.separators.is_empty() || !self.padding_symbols.is_empty() {
             blind_pool_size += 32;
