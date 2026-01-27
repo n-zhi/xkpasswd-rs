@@ -2,6 +2,9 @@
   "name": "xkpasswd-wasm",
   "description": "XKCD password generator",
   "version": "1.1.0",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/xkpasswd/xkpasswd-rs.git"
