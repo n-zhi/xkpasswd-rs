@@ -629,6 +629,76 @@ fn test_calc_entropy() {
     }
 }
 
+/// Tests for padding symbol entropy edge cases.
+/// Verifies that entropy is calculated correctly for all combinations of:
+/// - Empty vs non-empty padding_symbols pool
+/// - (0,0), (N,0), (0,N), (N,N) padding_symbol_lengths
+#[test]
+fn test_padding_symbol_entropy_edge_cases() {
+    let pool_size = 1000; // Fixed pool size for consistent word entropy
+
+    // Base settings with no symbol padding
+    let base = Settings::default()
+        .with_separators("")
+        .with_padding_digits(Some(0), Some(0))
+        .with_padding_symbols("");
+
+    let base_entropy = base.calc_entropy(pool_size).seen;
+
+    // Case 1: Empty symbols pool → always 0 symbol entropy regardless of lengths
+    let empty_pool_with_lengths = base
+        .with_padding_symbols("")
+        .with_padding_symbol_lengths(Some(2), Some(3));
+    assert_eq!(
+        base_entropy,
+        empty_pool_with_lengths.calc_entropy(pool_size).seen,
+        "Empty symbol pool should contribute 0 entropy even with lengths set"
+    );
+
+    // Case 2: Non-empty pool but (0,0) lengths → 0 symbol entropy
+    let pool_but_zero_lengths = base
+        .with_padding_symbols("ABCD")
+        .with_padding_symbol_lengths(Some(0), Some(0));
+    assert_eq!(
+        base_entropy,
+        pool_but_zero_lengths.calc_entropy(pool_size).seen,
+        "Symbol lengths (0,0) should contribute 0 entropy even with non-empty pool"
+    );
+
+    // Case 3: Non-empty pool with prefix only (N,0) → 1 choice
+    let prefix_only = base
+        .with_padding_symbols("ABCD") // 4 symbols → log2(4) = 2 bits
+        .with_padding_symbol_lengths(Some(3), Some(0));
+    let prefix_entropy = prefix_only.calc_entropy(pool_size).seen;
+    assert_eq!(
+        base_entropy + 2, // +2 bits for 1 choice from 4 symbols
+        prefix_entropy,
+        "Prefix-only should add log2(pool_size) bits"
+    );
+
+    // Case 4: Non-empty pool with suffix only (0,N) → 1 choice
+    let suffix_only = base
+        .with_padding_symbols("ABCD")
+        .with_padding_symbol_lengths(Some(0), Some(5));
+    let suffix_entropy = suffix_only.calc_entropy(pool_size).seen;
+    assert_eq!(
+        base_entropy + 2, // +2 bits for 1 choice from 4 symbols
+        suffix_entropy,
+        "Suffix-only should add log2(pool_size) bits"
+    );
+
+    // Case 5: Non-empty pool with both (N,N) → 2 independent choices
+    let both_sides = base
+        .with_padding_symbols("ABCD")
+        .with_padding_symbol_lengths(Some(2), Some(3));
+    let both_entropy = both_sides.calc_entropy(pool_size).seen;
+    assert_eq!(
+        base_entropy + 4, // +4 bits for 2 choices from 4 symbols (2 × log2(4))
+        both_entropy,
+        "Both prefix and suffix should add 2 × log2(pool_size) bits"
+    );
+}
+
 #[test]
 fn test_build_words_list() {
     let settings = Settings::default().with_words_count(3).unwrap();
