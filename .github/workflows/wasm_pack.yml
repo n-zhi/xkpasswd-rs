@@ -19,13 +19,13 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install wasm-pack
-        run: cargo binstall wasm-pack --version 0.14.0 --no-confirm --force
+        run: cargo binstall wasm-pack --version 0.14.0 --no-confirm
 
       - name: Test on Chrome
-        run: PATH="$HOME/.cargo/bin:$PATH" wasm-pack test --headless --chrome --all-features
+        run: wasm-pack test --headless --chrome --all-features
 
       - name: Test on Firefox
-        run: PATH="$HOME/.cargo/bin:$PATH" wasm-pack test --headless --firefox --all-features
+        run: wasm-pack test --headless --firefox --all-features
 
   build-size:
     name: Build size limit
