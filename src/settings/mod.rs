@@ -405,6 +405,24 @@ impl Randomizer for Settings {
         }
     }
 
+    /// Computes entropy estimates for passwords generated with these settings using the given word pool size.
+    ///
+    /// Calculates both "blind" entropy bounds (based on character pool and total length) and "seen" entropy
+    /// (based on the provided word pool, transforms, separators, digits and padding symbols). The returned
+    /// `Entropy` contains `blind_min`, `blind_max`, `seen`, and a `guess_time` derived from `seen`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use xkpasswd::prelude::Randomizer;
+    /// use xkpasswd::settings::Settings;
+    ///
+    /// let settings = Settings::default();
+    /// let pool_size = 1000usize;
+    /// let entropy = settings.calc_entropy(pool_size);
+    /// // blind_min should not exceed blind_max
+    /// assert!(entropy.blind_min <= entropy.blind_max);
+    /// ```
     fn calc_entropy(&self, pool_size: usize) -> Entropy {
         let (min_total_len, max_total_len) = match self.padding_strategy {
             PaddingStrategy::Adaptive(len) => (len, len),

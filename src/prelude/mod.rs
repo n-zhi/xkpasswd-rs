@@ -7,12 +7,14 @@ use std::ops::Range;
 use std::str::*;
 use wasm_bindgen::prelude::*;
 
+/// Strategy for padding the generated password to a specific length.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaddingStrategy {
     Fixed,
     Adaptive(usize),
 }
 
+/// The result of applying a padding strategy.
 #[derive(Debug)]
 pub enum PaddingResult {
     Unchanged,
@@ -20,6 +22,7 @@ pub enum PaddingResult {
     Pad(String),
 }
 
+/// Predefined configuration presets.
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug)]
 pub enum Preset {
@@ -33,6 +36,7 @@ pub enum Preset {
     Xkcd,
 }
 
+/// Estimated time required to guess a password using a brute-force attack.
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GuessTime {
@@ -127,12 +131,17 @@ impl GuessTime {
     }
 }
 
+/// Information about the entropy (strength) of the generated password.
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Entropy {
+    /// Minimum entropy bits if the attacker knows only the length range (blind guess).
     pub blind_min: usize,
+    /// Maximum entropy bits if the attacker knows only the length range (blind guess).
     pub blind_max: usize,
+    /// Entropy bits if the attacker knows the full generation parameters (seen).
     pub seen: usize,
+    /// Estimated time to crack the password based on `seen` entropy.
     pub guess_time: GuessTime,
 }
 
@@ -152,6 +161,7 @@ impl fmt::Display for Entropy {
     }
 }
 
+/// Supported languages for the word dictionary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Language {
     English,
@@ -163,26 +173,42 @@ pub enum Language {
 
 type Dict<'a> = HashMap<u8, Vec<&'a str>>;
 
+/// Trait for localization support (loading dictionaries).
 pub trait L10n {
     fn for_language(language: Language) -> Self;
 }
 
+/// Trait for building and configuring the password generator.
 pub trait Builder: Default + fmt::Display + Sized {
+    /// Sets the number of words to use.
     fn with_words_count(&self, words_count: u8) -> Result<Self, String>;
+    /// Sets the minimum and maximum length for each word.
     fn with_word_lengths(
         &self,
         min_length: Option<u8>,
         max_length: Option<u8>,
     ) -> Result<Self, String>;
+    /// Sets the characters used as separators between words.
     fn with_separators(&self, separators: &str) -> Self;
+    /// Sets the number of random digits to add before and after the password.
     fn with_padding_digits(&self, prefix: Option<u8>, suffix: Option<u8>) -> Self;
+    /// Sets the symbols used for padding.
     fn with_padding_symbols(&self, symbols: &str) -> Self;
+    /// Sets the number of random symbols to add before and after the password.
+    ///
+    /// **Note:** This will enforce `PaddingStrategy::Fixed`, overriding any previously set strategy.
     fn with_padding_symbol_lengths(&self, prefix: Option<u8>, suffix: Option<u8>) -> Self;
+    /// Sets the strategy for total length padding/trimming.
+    ///
+    /// **Note:** Setting `PaddingStrategy::Adaptive` will reset any padding symbol lengths to 0.
     fn with_padding_strategy(&self, strategy: PaddingStrategy) -> Result<Self, String>;
+    /// Sets the transformations (mixed case) to be applied to words, supporting combined flags.
     fn with_word_transforms(&self, transform: u8) -> Result<Self, String>;
+    /// Loads configuration from a predefined preset.
     fn from_preset(preset: Preset) -> Self;
 }
 
+/// Trait for randomization logic and entropy calculation.
 pub trait Randomizer {
     fn word_lengths(&self) -> Range<u8>;
     fn rand_words(&self, pool: &[&str]) -> Vec<String>;
@@ -193,6 +219,7 @@ pub trait Randomizer {
     fn calc_entropy(&self, pool_size: usize) -> Entropy;
 }
 
+/// The main password generator structure.
 #[derive(Debug)]
 pub struct Xkpasswd {
     dict: Dict<'static>,
@@ -239,6 +266,7 @@ impl L10n for Xkpasswd {
 }
 
 impl Xkpasswd {
+    /// Generates a new password and its entropy using the provided settings.
     pub fn gen_pass<S: Randomizer>(&self, settings: &S) -> (String, Entropy) {
         let mut all_words: Vec<&str> = vec![];
 
